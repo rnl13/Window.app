@@ -19,10 +19,12 @@ test('rider route persists minimal profiles, isolates accounts and rejects unaut
  const source=ts.transpileModule(readFileSync(new URL('../app/api/rider/route.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
  const module=new vm.SourceTextModule(source,{context});await module.link(async name=>{const values=dependencies[name];return new vm.SyntheticModule(Object.keys(values),function(){for(const [key,value] of Object.entries(values))this.setExport(key,value);},{context});});await module.evaluate();
  const request=(method,user,body,origin='https://test.local')=>new Request('https://test.local/api/rider',{method,headers:{origin,...(user?{'oai-authenticated-user-id':user,'oai-authenticated-user-email':user+'@example.test'}:{})},...(body?{body:JSON.stringify(body)}:{})});
- const profile={...structuredClone(EMPTY_USER),sportIds:['kite-freeride'],consent:true,preferredRegion:'zealand'};
+ const profile={...structuredClone(EMPTY_USER),sportIds:['kite-freeride'],disciplinePreferences:{'kite-freeride':{priority:'secondary',notify:true}},consent:true,preferredRegion:'zealand'};
  const save={action:'profile',profile};
  assert.equal((await module.namespace.POST(request('POST',null,save))).status,401);
  assert.equal((await module.namespace.POST(request('POST','qa-one',save,'https://other.test'))).status,403);
+ const legacy={...structuredClone(EMPTY_USER),sportIds:['kite-wave'],consent:true};delete legacy.disciplinePreferences;
+ assert.equal(validation.validUser(legacy),true);
  assert.equal((await module.namespace.POST(request('POST','qa-one',save))).status,200);
  assert.deepEqual((await (await module.namespace.GET(request('GET','qa-one'))).json()).profile,profile);
  assert.equal((await (await module.namespace.GET(request('GET','qa-two'))).json()).profile,null);

@@ -55,5 +55,5 @@ export function localRules(spot:Spot,sport:Sport):RuleSet[]{
  if(['surf-short','surf-long','prone'].includes(sport.id))return [ruleset(`break-${spot.id}`, [range('swellBreakAngle',0,0,55,120,1)])];
  return [];
 }
-export const EMPTY_USER:User={version:1,level:'intermediate',sportIds:[],customSports:[],equipment:[],preferences:[],consent:false};
+export const EMPTY_USER:User={version:1,level:'intermediate',sportIds:[],disciplinePreferences:{},customSports:[],equipment:[],preferences:[],consent:false};
 export const EQUIPMENT_KINDS=[...new Set(SPORTS.flatMap(s=>s.equipmentKinds))];
