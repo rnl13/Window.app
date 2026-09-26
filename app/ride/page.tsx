@@ -33,7 +33,7 @@ export default function Ride(){
  const [ruleSport,setRuleSport]=useState('kite-wave'),[ruleSpot,setRuleSpot]=useState(''),[ruleName,setRuleName]=useState(''),[effect,setEffect]=useState<Rule['effect']>('boost'),[points,setPoints]=useState(10),[predicates,setPredicates]=useState<Predicate[]>([{parameter:'wind',op:'between',min:8,max:12}]);
  const [kind,setKind]=useState('kite'),[gearName,setGearName]=useState(''),[size,setSize]=useState('');
  const [area,setArea]=useState<'thy'|'zealand'|'all'>('zealand'),[dayOffset,setDayOffset]=useState(1),[travelMode,setTravelMode]=useState(false),[resultMode,setResultMode]=useState<'quick'|'trip'>('quick');
- const [authenticated,setAuthenticated]=useState(false),[profileStatus,setProfileStatus]=useState(''),[savingProfile,setSavingProfile]=useState(false),[showAllAlternatives,setShowAllAlternatives]=useState(false);
+ const [authenticated,setAuthenticated]=useState(false),[profileStatus,setProfileStatus]=useState(''),[savingProfile,setSavingProfile]=useState(false),[showAllAlternatives,setShowAllAlternatives]=useState(false),[autoSaveStatus,setAutoSaveStatus]=useState('');
  const [profileLoadFailed,setProfileLoadFailed]=useState(false);
  const resultRef=useRef<HTMLElement>(null),planRef=useRef<HTMLElement>(null);
  useEffect(()=>{if(searched)resultRef.current?.scrollIntoView({behavior:'smooth',block:'start'});},[searched]);
@@ -58,6 +58,28 @@ export default function Ride(){
  try{sessionStorage.removeItem('window-profile-draft');}catch{}
  }
  function rememberDraft(){const validTravel=Number.isFinite(maxDrive)&&maxDrive>=0&&maxDrive<=600&&Object.values(drives).every(v=>Number.isFinite(v)&&v>=0&&v<=600);try{sessionStorage.setItem('window-profile-draft',JSON.stringify({...profile,preferredRegion:area,...(validTravel?{travel:{maxMinutes:maxDrive,minutesBySpot:drives}}:{})}));}catch{}}
+
+ useEffect(()=>{
+  if(!ready||!authenticated||profileLoadFailed||!profile.consent||!profile.sportIds.length){
+   setAutoSaveStatus('');
+   return;
+  }
+
+  setAutoSaveStatus('Ændringer ikke gemt endnu…');
+
+  const timer=window.setTimeout(async()=>{
+   setAutoSaveStatus('Gemmer…');
+   try{
+    await saveProfile();
+    setAutoSaveStatus('Gemt ✓');
+   }catch(e){
+    setAutoSaveStatus(e instanceof Error?`Kunne ikke gemme: ${e.message}`:'Kunne ikke gemme automatisk');
+   }
+  },900);
+
+  return()=>window.clearTimeout(timer);
+ },[profile,area,maxDrive,drives,authenticated,ready,profileLoadFailed]);
+
  async function run(mode:'quick'|'trip'=travelMode?'trip':'quick'){
  setShowAllAlternatives(false);setBusy(true);setStatus('Finder forslag til dine sportsgrene…');setSearched(false);setResults([]);
  try{
@@ -105,8 +127,9 @@ export default function Ride(){
  <p role="status" className="ride-status">{status}</p>
  <fieldset className="ride-form" disabled={busy||!ready||savingProfile}><a className="profile-summary" href="#profile" onClick={()=>setProfileOpen(true)}><strong>Min profil</strong><span>{profile.sportIds.length?`${profile.sportIds.length} ${profile.sportIds.length===1?'disciplin':'discipliner'} · ${profile.equipmentOnly?'udstyrsfilter aktivt':'udstyr valgfrit'}`:'Vælg dine sportsgrene og dit niveau'} · Tilpas</span></a>
  <details id="profile" className={panel} open={profileOpen} onToggle={e=>setProfileOpen(e.currentTarget.open)}><summary className="cursor-pointer text-xl font-semibold">Min profil · to enkle valg</summary><QuickProfile profile={profile} onChange={update} onContinue={()=>{setProfileOpen(false);planRef.current?.scrollIntoView({behavior:'smooth',block:'start'});}}/>
- <details className="profile-extra" open={profileLoadFailed||!!profileStatus||undefined}><summary>Gem profilen på din konto</summary>
- <p className="mt-3">{!ready?'Henter profil…':profileLoadFailed?'Forbindelsen til din profil fejlede.':authenticated?'Du er logget ind.':'Du kan få forslag uden en konto. Log ind for at gemme dine valg.'}</p>
+ <section className="profile-extra"><h3 className="text-lg font-semibold">Gem profilen på din konto</h3>
+ <p className="mt-3">{!ready?'Henter profil…':profileLoadFailed?'Forbindelsen til din profil fejlede.':authenticated?'Du er logget ind. Når du har givet samtykke, gemmes ændringer automatisk.':'Du kan få forslag uden en konto. Log ind for at gemme dine valg.'}</p>
+ {authenticated&&profile.consent&&autoSaveStatus&&<p role="status" className="profile-message">{autoSaveStatus}</p>}
  {profileStatus&&<p role="status" className="profile-message">{profileStatus}</p>}
  {profileLoadFailed?<button className="ride-secondary mt-3" onClick={async()=>{setSavingProfile(true);try{await readRecords();setProfileLoadFailed(false);setProfileStatus('Forbindelsen er genoprettet. Dine aktuelle valg er bevaret; Gem profil erstatter de tidligere gemte valg.');}catch(e){setProfileStatus((e as Error).message);}finally{setSavingProfile(false);}}}>Prøv forbindelsen igen</button>:<>
  <label className="mt-5 flex items-start gap-3"><input type="checkbox" className="mt-1" checked={profile.consent} onChange={e=>setProfile({...profile,consent:e.target.checked})}/><span>Gem min profil, mine valgte vurderinger og sessionsfeedback privat på min konto.</span></label>
@@ -114,7 +137,7 @@ export default function Ride(){
  <button className={button} disabled={savingProfile||!profile.consent||!profile.sportIds.length} onClick={async()=>{setSavingProfile(true);setProfileStatus('Gemmer…');try{await saveProfile();setProfileStatus('Profilen er gemt og kontrolleret. Dine valg huskes næste gang.');}catch(e){setProfileStatus((e as Error).message);}finally{setSavingProfile(false);}}}>{savingProfile?'Gemmer…':'Gem profil'}</button>
  <button className="ride-secondary" disabled={savingProfile||!profile.consent||!profile.sportIds.length} onClick={async()=>{setSavingProfile(true);try{await saveProfile();window.location.assign('/');}catch(e){setProfileStatus((e as Error).message);}finally{setSavingProfile(false);}}}>Gem og se mine spots</button>
  <a className="ride-secondary" href="/account">Min konto / log ud</a><button className="min-h-11 underline" onClick={async()=>{if(!window.confirm('Slet din gemte profil, vurderinger og sessionsfeedback?'))return;setSavingProfile(true);try{const r=await authFetch('/api/rider',{method:'DELETE',signal:AbortSignal.timeout(10000)});if(!r.ok)throw new Error('Kunne ikke slette. Prøv igen.');setProfile(structuredClone(EMPTY_USER));setRecords([]);setResults([]);setProfileStatus('Personlige data slettet.');try{sessionStorage.removeItem('window-profile-draft');}catch{}}catch(e){setProfileStatus((e as Error).message);}finally{setSavingProfile(false);}}}>Slet mine personlige data</button></>}</div></>}
- </details>
+ </section>
  <details className="profile-extra"><summary>Præferencer og progression (valgfrit)</summary>
  <div className="mt-5 grid gap-4 sm:grid-cols-2"><label>Stance<select className={input} value={profile.stance??''} onChange={e=>update({...profile,stance:e.target.value as User['stance']||undefined})}><option value="">Ikke angivet</option><option value="regular">Regular · venstre fod forrest</option><option value="goofy">Goofy · højre fod forrest</option></select></label><label>Bølgepræference<select className={input} value={profile.wavePreference??'either'} onChange={e=>update({...profile,wavePreference:e.target.value as User['wavePreference']})}><option value="either">Begge sider</option><option value="frontside">Frontside</option><option value="backside">Backside</option></select></label><label>Disciplin til progression<select className={input} value={profile.progression?.sportId??''} onChange={e=>update({...profile,progression:e.target.value?{sportId:e.target.value,goal:profile.progression?.goal||'Teknik og kontrol'}:undefined})}><option value="">Intet træningsmål</option>{sports.filter(s=>profile.sportIds.includes(s.id)).map(s=><option key={s.id} value={s.id}>{label(s)}</option>)}</select></label>{profile.progression&&<label>Hvad vil du træne?<input className={input} maxLength={200} value={profile.progression.goal} onChange={e=>update({...profile,progression:{...profile.progression!,goal:e.target.value}})}/></label>}</div><p className="mt-3 text-sm text-cyan-100">Stance og bølgeside gemmes, men ændrer først fit, når retningen på det lokale bølgebrud er kendt. Progression finder forhold til din valgte disciplin; den vurderer endnu ikke enkelte tricks. Køretider fra turplanlægningen gemmes med profilen.</p></details><details className="profile-extra"><summary>Udstyrsnavne og størrelser (valgfrit)</summary><h3 className="mt-6 text-lg font-semibold">Tilføj udstyr</h3><div className="mt-3 grid gap-3 sm:grid-cols-3"><label>Type<select className={input} value={kind} onChange={e=>setKind(e.target.value)}>{[...EQUIPMENT_KINDS,...profile.customSports.map(s=>s.id)].map(k=><option key={k} value={k}>{profile.customSports.find(s=>s.id===k)?.name??k}</option>)}</select></label><label>Navn<input className={input} maxLength={120} value={gearName} onChange={e=>setGearName(e.target.value)} placeholder="Fx Ozone 8 m²"/></label><label>Størrelse (valgfri)<NumberInput className={input} type="number" min="0.1" step="0.1" value={size} onChange={e=>setSize(e.target.value)}/></label></div><button className={button+' mt-3'} onClick={()=>{if(!gearName.trim()||size&&(!Number.isFinite(+size)||+size<=0))return;update({...profile,equipment:[...profile.equipment,{id:newId(),kind,name:gearName.trim(),size:size?+size:null,sportIds:[]}]});setGearName('');setSize('');}}>Tilføj udstyr</button><ul className="mt-3 space-y-2">{profile.equipment.map(e=><li key={e.id} className="flex items-center justify-between gap-2">{e.name} · {e.kind}<button className="min-h-11 px-3 underline" onClick={()=>update({...profile,equipment:profile.equipment.filter(g=>g.id!==e.id)})}>Fjern</button></li>)}</ul><p className="mt-3 text-sm text-cyan-100">Dit udstyr begrænser kun forslag, når du slår udstyrsfilteret til. Størrelser bruges endnu ikke til at anbefale en bestemt kite eller wing.</p></details>
 
