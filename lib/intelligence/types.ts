@@ -1,0 +1,31 @@
+export const ENGINE_VERSION = 'conditions-1.1.0';
+export type Level = 'beginner'|'intermediate'|'experienced';
+export type Parameter = 'wind'|'gust'|'direction'|'swell'|'swellDirection'|'period'|'secondarySwell'|'secondaryPeriod'|'windWave'|'windWaveDirection'|'windWavePeriod'|'tide'|'current'|'temperature'|'precipitation'|'daylight'|'stability'|'duration'|'gustRatio'|'waveEnergy'|'windSwellAngle'|'swellBreakAngle';
+export type Weather = Partial<Record<Parameter,number|null>>;
+export type DataQuality = {status:'provider'|'verified'|'unverified'|'missing'; notes:string[]};
+export type Sector = {from:number;to:number};
+export type SpotGeometry = {seaBearing:number|null; coastlineOrientation:number|null; launchOrientation:number|null; breakOrientation:number|null; preferredWindSectors:Sector[]; preferredSwellSectors:Sector[]; dangerousSectors:Sector[]; hazards:string[]; localRules:string[]; evidence:'approximate'|'user-derived'|'verified'|'unknown'; bathymetry?:{source:string;resolutionM:number;uri:string}|null};
+export type Spot = {id:string;name:string;lat:number;lon:number;geometry:SpotGeometry;sourceUrl?:string};
+export type Predicate = {parameter:Parameter; op:'between'|'outside'|'sector';min:number;max:number}|{parameter:'relativeWind'|'tack'|'level';op:'is';value:string};
+export type Rule = {id:string;name:string;when:Predicate[];effect:'boost'|'penalty'|'hard';points:number};
+export type Range = {parameter:Parameter;min:number;idealMin:number;idealMax:number;max:number;weight:number;required:boolean};
+export type RuleSet = {id:string;version:number;owner:string;source:string;visibility:'private'|'public';evidence:'seed'|'user-derived'|'validated';createdAt:string;updatedAt:string;ranges:Range[];rules:Rule[]};
+export type Sport = {id:string;name:string;discipline:string;minimumLevel:Level;equipmentKinds:string[];ruleset:RuleSet};
+export type Equipment = {id:string;kind:string;name:string;size:number|null;sportIds:string[]};
+export type UserPreference = {sportId:string;spotId:string|null;ruleset:RuleSet};
+export type User = {equipmentOnly?:boolean; preferredRegion?:'thy'|'zealand'|'all'; stance?:'regular'|'goofy'; wavePreference?:'either'|'frontside'|'backside'; progression?:{sportId:string;goal:string}; travel?:{maxMinutes:number;minutesBySpot:Record<string,number>}; version:number;level:Level;sportIds:string[];customSports:Sport[];equipment:Equipment[];preferences:UserPreference[];consent:boolean};
+export type ForecastModel = {id:string;provider:string;family:string;resolutionKm:number|null};
+export type ForecastSnapshot = {id:string;schemaVersion:1;spotId:string;provider:string;model:string;family:string;modelRun:string|null;createdAt:string|null;retrievedAt:string;validTime:string;coordinates:{lat:number;lon:number};gridCoordinates:{lat:number;lon:number}|null;resolutionKm:number|null;weather:Weather;quality:DataQuality};
+export type ObservationSnapshot = {id:string;schemaVersion:1;source:string;type:'station'|'buoy'|'satellite'|'radar'|'session';timestamp:string;location:{lat:number;lon:number};variable:Parameter;value:number;unit:string;quality:DataQuality;spatialResolutionKm:number|null;distanceKm:number|null;relevance:string|null};
+export type SatelliteObservation = ObservationSnapshot & {type:'satellite';platform:string;product:string;footprint:string|null};
+export interface ForecastProvider {id:string;fetch(spot:Spot):Promise<ForecastSnapshot[]>}
+export interface ObservationProvider {id:string;fetch(spot:Spot):Promise<ObservationSnapshot[]>}
+export type ForecastConfidence = {label:'UNAVAILABLE'|'LOW'|'MEDIUM'|'HIGH';method:string;reasons:string[];input:{snapshotIds:string[];observationIds:string[];windSpread:number|null;directionSpread:number|null;families:number;runStability:number|null;leadHours:number|null}};
+export type ScoreExplanation = {ruleId:string;layer:string;message:string;points:number|null};
+export type WindowEvaluation = {id:string;schemaVersion:1;engineVersion:string;createdAt:string;sportId:string;spotId:string;start:string;end:string;score:number|null;viability:'eligible'|'blocked'|'unknown';reasons:ScoreExplanation[];missing:string[];forecastIds:string[];observationIds:string[];confidence:ForecastConfidence;rulesets:RuleSet[];profile:User;weather:Weather;modelVersion:null;spot:Spot};
+export type SessionFeedback = {rating:number;windQuality:number|null;waveQuality:number|null;forecastAccuracy:number|null;crowd:number|null;notes:string;equipmentIds:string[];observed:Weather};
+export type Session = {id:string;schemaVersion:1;createdAt:string;actualStart:string;actualEnd:string;evaluation:WindowEvaluation;feedback:SessionFeedback};
+export type ForecastError = {id:string;forecastId:string;observationId:string;model:string;spotId:string;variable:Parameter;predicted:number;observed:number;error:number;horizonHours:number;method:string};
+export type HistoricalCondition = {spotId:string;source:string;kind:'observation'|'reanalysis';periodStart:string;periodEnd:string;sampleCount:number;weather:Weather};
+export type MLModelVersion = {id:string;task:'weather'|'condition'|'personal';trainingCutoff:string;holdoutScore:number;baselineScore:number;approved:boolean};
+export type ModelPrediction = {modelVersion:MLModelVersion;inputs:string[];output:unknown;explanation:string[]};

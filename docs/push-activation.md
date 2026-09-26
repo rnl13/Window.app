@@ -1,0 +1,17 @@
+# Window Web Push
+
+Implemented: installable web app manifest, service worker, authenticated per-device subscriptions (three per user, 100 overall pilot limit), encrypted subscription storage, endpoint allowlist, real VAPID/aes128gcm push sender, user-triggered test, unsubscribe, spot preferences and score threshold. No Google Calendar dependency.
+
+Weather POST /api/push/check requires Authorization: Bearer <PUSH_JOB_SECRET>. Invoke from a persistent HTTP scheduler every 30 minutes, with a timeout greater than 120 seconds. Keep the job secret in its secret/header settings, never the URL. Current Sites hosting tools do not expose cron registration. NO SCHEDULER HAS BEEN CONFIGURED. Do not substitute browser timers, a temporary shell process or a ChatGPT reminder.
+
+After attaching the scheduler, run its first invocation and verify 200 JSON (not an HTML sign-in response), a new push_jobs.last_success value, and provider logs for repeated successful invocations. Only then set PUSH_SCHEDULER_ENABLED=true in Sites and redeploy. The UI also requires a heartbeat within 90 minutes; lack of heartbeat reports inactive. Forecast HTTP failure does not write a success heartbeat. A zero-recipient run tests the scheduler but does not test weather retrieval or phone delivery.
+
+Weather uses the existing server forecast route directly, excluding incomplete wind/wave inputs, only future daylight windows in the next 24 hours and selected spots. At most one attempt per device per Copenhagen calendar day; ambiguous delivery is recorded unknown and not automatically retried. This prioritizes avoiding duplicates over guaranteed delivery. Provider acceptance is not proof of delivery. Missing calibrated confidence is stated in the alert. No GO safety claim. Expired endpoints (404/410) are removed, delivery metadata expires after 30 days.
+
+Secrets generated once: PUSH_PRIVATE_KEY (P-256 VAPID private scalar, base64url), PUSH_STORAGE_KEY (32 random bytes hex), PUSH_JOB_SECRET (32 random bytes hex). Public configuration: PUSH_PUBLIC_KEY (uncompressed P-256 public key, base64url). Never rotate VAPID/storage keys casually: existing subscriptions depend on them. Existing Google/calendar settings remain independent.
+
+Required phone acceptance: open /push in Safari, add to Home Screen, launch there, sign in, select spots and threshold, allow push and save. Send test; visually confirm receipt. Verify from a locked phone using a separate authorized trigger; a foreground test alone does not establish locked-screen delivery. Turn off and check no further pushes. Reopen and verify saved preferences. Test with two accounts before broader pilot. Do not mark automatic weather alerts operational until persistent scheduler and real-device tests pass.
+
+Validation performed: encrypted payload construction with real generated P-256 keys (no external message), endpoint/credential validation, SSRF rejection, owner-bound registration SQL and duplicate claim SQL, production build. Still missing: real device subscription/delivery, real background timer and complete end-to-end weather alert.
+
+Sources: https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/ ; installed @block65/webcrypto-web-push 2.0.0 README (aes128gcm + RFC8292 VAPID); https://developers.cloudflare.com/workers/configuration/cron-triggers/ . Cloudflare platform support does not itself establish Sites deployment support.

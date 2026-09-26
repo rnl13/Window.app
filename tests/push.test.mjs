@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import {randomBytes,createECDH} from 'node:crypto';
+import {buildPushPayload} from '@block65/webcrypto-web-push';
+import {validSubscription} from '../lib/push-model.ts';
+const ec=()=>{const e=createECDH('prime256v1');e.generateKeys();return e;};
+const client=ec(),server=ec();
+const sub={endpoint:'https://web.push.apple.com/Qtest',keys:{p256dh:client.getPublicKey().toString('base64url'),auth:randomBytes(16).toString('base64url')}};
+assert.equal(validSubscription(sub),true);
+for(const endpoint of ['https://127.0.0.1/','http://fcm.googleapis.com/x','https://web.push.apple.com.evil.test/x','https://user:pass@web.push.apple.com/x','https://web.push.apple.com:8443/x'])assert.equal(validSubscription({...sub,endpoint}),false);
+assert.equal(validSubscription({...sub,keys:{...sub.keys,auth:'bad'}}),false);
+const payload=await buildPushPayload({data:JSON.stringify({title:'Window test'}),options:{ttl:300}},sub,{subject:'https://window-kitesurf.rasmusniewaldlarsen.chatgpt.site',publicKey:server.getPublicKey().toString('base64url'),privateKey:server.getPrivateKey().toString('base64url')});
+const headers=new Headers(payload.headers);
+assert.equal(headers.get('content-encoding'),'aes128gcm');
+assert.match(headers.get('authorization'),/^vapid /);
+assert.equal(headers.get('ttl'),'300');
+assert.equal(payload.method.toUpperCase(),'POST');
+console.log('Push endpoint SSRF guards, key validation and real encrypted Apple-compatible payload checks passed. No notification sent.');

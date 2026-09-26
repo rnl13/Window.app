@@ -1,0 +1,36 @@
+// Run with node --experimental-vm-modules --test tests/profile-route.test.mjs
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import vm from 'node:vm';
+import {readFileSync} from 'node:fs';
+import {DatabaseSync} from 'node:sqlite';
+import ts from 'typescript';
+import {EMPTY_USER} from '../lib/intelligence/catalog.ts';
+import * as validation from '../lib/intelligence/validation.ts';
+import * as catalog from '../lib/intelligence/catalog.ts';
+import * as engine from '../lib/intelligence/engine.ts';
+import * as providers from '../lib/intelligence/providers.ts';
+test('rider route persists minimal profiles, isolates accounts and rejects unauthorised writes',async()=>{
+ const sqlite=new DatabaseSync(':memory:');
+ sqlite.exec('CREATE TABLE rider_profiles(user_id TEXT PRIMARY KEY,payload TEXT,updated_at INTEGER); CREATE TABLE rider_records(id TEXT,user_id TEXT,kind TEXT,payload TEXT,created_at INTEGER)');
+ const database={prepare(sql){return {bind(...args){return {first:async()=>sqlite.prepare(sql).get(...args)??null,all:async()=>({results:sqlite.prepare(sql).all(...args)}),run:async()=>sqlite.prepare(sql).run(...args)};}};}};
+ const context=vm.createContext({Request,Response,URL,Date,JSON,crypto,console});
+ const dependencies={'@/lib/calendar-db':{db:()=>database,json:(body,status=200)=>Response.json(body,{status}),userId:r=>r.headers.get('oai-authenticated-user-email')?r.headers.get('oai-authenticated-user-id'):null},'@/lib/intelligence/validation':validation,'@/lib/intelligence/catalog':catalog,'@/lib/intelligence/engine':engine,'@/lib/intelligence/providers':providers};
+ const source=ts.transpileModule(readFileSync(new URL('../app/api/rider/route.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
+ const module=new vm.SourceTextModule(source,{context});await module.link(async name=>{const values=dependencies[name];return new vm.SyntheticModule(Object.keys(values),function(){for(const [key,value] of Object.entries(values))this.setExport(key,value);},{context});});await module.evaluate();
+ const request=(method,user,body,origin='https://test.local')=>new Request('https://test.local/api/rider',{method,headers:{origin,...(user?{'oai-authenticated-user-id':user,'oai-authenticated-user-email':user+'@example.test'}:{})},...(body?{body:JSON.stringify(body)}:{})});
+ const profile={...structuredClone(EMPTY_USER),sportIds:['kite-freeride'],consent:true,preferredRegion:'zealand'};
+ const save={action:'profile',profile};
+ assert.equal((await module.namespace.POST(request('POST',null,save))).status,401);
+ assert.equal((await module.namespace.POST(request('POST','qa-one',save,'https://other.test'))).status,403);
+ assert.equal((await module.namespace.POST(request('POST','qa-one',save))).status,200);
+ assert.deepEqual((await (await module.namespace.GET(request('GET','qa-one'))).json()).profile,profile);
+ assert.equal((await (await module.namespace.GET(request('GET','qa-two'))).json()).profile,null);
+ assert.equal((await module.namespace.POST(request('POST','qa-one',{action:'profile',profile:{...profile,consent:false}}))).status,400);
+ const revised={...profile,level:'experienced',sportIds:['kite-wave','surf-long'],preferredRegion:'thy',equipmentOnly:false,travel:{maxMinutes:120,minutesBySpot:{'agger-tange':90}}};
+ assert.equal((await module.namespace.POST(request('POST','qa-one',{action:'profile',profile:revised}))).status,200);
+ assert.deepEqual((await (await module.namespace.GET(request('GET','qa-one'))).json()).profile,revised);
+ assert.equal((await (await module.namespace.GET(request('GET','qa-two'))).json()).profile,null);
+ assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM rider_profiles').get().n,1);
+ sqlite.close();
+});

@@ -1,0 +1,14 @@
+# Copy to .dev.vars for local development only. Never commit real keys.
+APP_ORIGIN=http://localhost:5173
+CLERK_PUBLISHABLE_KEY=
+CLERK_SECRET_KEY=
+CLERK_JWT_KEY=
+# Optional integration secrets. Without these the features display setup status.
+GOOGLE_CALENDAR_CLIENT_ID=
+GOOGLE_CALENDAR_CLIENT_SECRET=
+CALENDAR_TOKEN_KEY=
+PUSH_PUBLIC_KEY=
+PUSH_PRIVATE_KEY=
+PUSH_STORAGE_KEY=
+PUSH_JOB_SECRET=
+PUSH_SCHEDULER_ENABLED=false

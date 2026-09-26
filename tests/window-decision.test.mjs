@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {tripWindow,forecastConfidence,windowScore,angle,decision,memberSupport} from '../lib/window-decision.ts';
+const t={earliestDeparture:780,latestReturn:1140,windowStart:840,windowEnd:1020,daylightEnd:1140,outbound:60,inbound:60,rig:30,pack:20,minWater:90,maxDrive:180};
+assert.equal(tripWindow(t).waterMinutes,150);assert.equal(tripWindow({...t,outbound:180,inbound:180}).feasible,false);
+assert.equal(angle(359,1),2);
+const p={windMin:8,windIdeal:11,windMax:15,gustMax:18,waveMin:.5,waveIdeal:1.7,waveMax:3,periodIdeal:7,directionIdeal:292.5,waveDirectionIdeal:315};
+const c={wind:11,direction:292.5,gust:13,wave:1.7,period:7,waveDirection:315};
+assert.equal(windowScore(c,p).score,97);assert.equal(windowScore({...c,gust:null},p).score,null);assert.equal(windowScore({...c,wind:19,gust:21},p).score,null);
+const e={criticalComplete:true,fetchedAgeHours:1,runAgeHours:2,leadHours:12,familyCount:3,windRange:1,directionRange:10,timingSpreadHours:1,stableRuns:2,locallyValidated:false};
+assert.equal(forecastConfidence(e).label,'MEDIUM');assert.equal(forecastConfidence({...e,runAgeHours:null}).label,'UNAVAILABLE');assert.equal(forecastConfidence({...e,leadHours:168}).label,'LOW');assert.equal(forecastConfidence({...e,locallyValidated:true}).label,'HIGH');
+assert.equal(decision(97,'HIGH',true,false),'INSUFFICIENT_DATA');assert.equal(decision(97,'LOW',true,true),'WAIT');assert.equal(decision(97,'HIGH',false,true),'NO_MATCH');assert.equal(memberSupport([true,false,null]).available,2);
+console.log('14 core assertions passed; synthetic fixtures only');

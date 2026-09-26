@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import {parsePlan,eventBody} from '../lib/calendar-model.ts';
+import {seal,unseal,randomHex,sameOrigin,SITE_ORIGIN} from '../lib/calendar-security.ts';
+import {syncGoogleEvent,GoogleError} from '../lib/calendar-google.ts';
+const p={id:'12345678-1234-1234-1234-123456789abc',date:'2026-10-25',name:'Lynæs',region:'Danmark',lat:55.9,lon:11.8,departure:780,home:1140,waterStart:870,waterEnd:1060,reminders:[60,1440],cancelled:false};
+assert.deepEqual(parsePlan(p),p);assert.equal(parsePlan({...p,id:'../other'}),null);assert.equal(parsePlan({...p,date:'2026-02-30'}),null);assert.equal(parsePlan({...p,home:700}),null);assert.equal(parsePlan({...p,reminders:[-1]}),null);
+const event=eventBody(p);assert.equal(event.start.timeZone,'Europe/Copenhagen');assert.equal(event.start.dateTime,'2026-10-25T13:00:00');assert.deepEqual(event.reminders.overrides,[{method:'popup',minutes:60},{method:'popup',minutes:1440}]);assert.equal(event.status,'tentative');assert.equal(event.attendees,undefined);
+const key=randomHex(),encrypted=await seal('test-refresh',key,'user-a');assert.notEqual(encrypted,'test-refresh');assert.equal(await unseal(encrypted,key,'user-a'),'test-refresh');await assert.rejects(()=>unseal(encrypted,key,'user-b'));await assert.rejects(()=>unseal(encrypted,randomHex(),'user-a'));
+assert.equal(sameOrigin(new Request(SITE_ORIGIN,{headers:{Origin:'https://evil.example'}})),false);assert.equal(sameOrigin(new Request(SITE_ORIGIN)),false);assert.equal(sameOrigin(new Request(SITE_ORIGIN,{headers:{Origin:SITE_ORIGIN}})),true);
+let calls=[],existing=null;const realFetch=globalThis.fetch;
+globalThis.fetch=async(url,opt)=>{calls.push({url,method:opt.method,body:opt.body?JSON.parse(opt.body):null});if(opt.method==='GET')return existing?Response.json(existing):new Response(null,{status:404});if(opt.method==='POST'){existing=JSON.parse(opt.body);return Response.json(existing);}if(opt.method==='PATCH'){existing={...existing,...JSON.parse(opt.body)};return Response.json(existing);}throw new Error('Unexpected request');};
+await syncGoogleEvent('private@calendar', 'test-token',p);assert.equal(calls.filter(c=>c.method==='POST').length,1);
+await syncGoogleEvent('private@calendar','test-token',{...p,home:1150});assert.equal(calls.filter(c=>c.method==='POST').length,1);assert.equal(existing.id,event.id);assert.equal(existing.end.dateTime,'2026-10-25T19:10:00');
+await syncGoogleEvent('private@calendar','test-token',{...p,cancelled:true});assert.equal(existing.status,'cancelled');await assert.rejects(()=>syncGoogleEvent('private@calendar','test-token',p),e=>e instanceof GoogleError&&e.code==='EVENT_REMOVED');
+existing={...event,extendedProperties:{private:{windowPlanId:'someone-else'}}};await assert.rejects(()=>syncGoogleEvent('private@calendar','test-token',p),e=>e.code==='EVENT_CONFLICT');
+let step=0;globalThis.fetch=async(url,opt)=>{step++;if(step===1)return new Response(null,{status:404});if(step===2)return new Response(null,{status:409});if(step===3)return Response.json(event);if(step===4){assert.equal(opt.method,'PATCH');return Response.json(event);}throw new Error('Unexpected retry');};await syncGoogleEvent('private@calendar','test-token',p);assert.equal(step,4);
+globalThis.fetch=realFetch;console.log('Calendar sync checks passed: plan validation, reminder payload, DST zone, encryption ownership, origin checks, stable event ID, update, cancellation, conflicts and retry after duplicate response.');
